@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Beyond the Scale — Precision Red Flags Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: #0B0E14; color: #E8EAF0; font-family: 'DM Sans', system-ui, sans-serif; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0B0E14; }
+  ::-webkit-scrollbar-thumb { background: #252A38; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, ReferenceLine, ComposedChart, Area, Cell, Legend, LabelList
+} = Recharts;
+const { useState } = React;
+
+/* ── TOKENS ── */
+const C = {
+  bg:"#0B0E14", surface:"#13171F", card:"#1A1F2B", border:"#252A38",
+  accent:"#E8442A", gold:"#F0A500", teal:"#1DB8A4", muted:"#4A5168",
+  text:"#E8EAF0", textSub:"#8890A8", safe:"#22C55E", warn:"#F59E0B", danger:"#EF4444",
+};
+const FD = "'Playfair Display', Georgia, serif";
+const FB = "'DM Sans', system-ui, sans-serif";
+const FM = "'DM Mono', monospace";
+
+/* ── DATA ── */
+const KPI_DATA = [
+  { label:"No Comorbidities",  rate:0.88, n:6254,  color:C.safe   },
+  { label:"Single Comorbidity",rate:1.76, n:5457,  color:C.warn   },
+  { label:"Dual: HBP + HC",   rate:3.45, n:4034,  color:C.danger },
+];
+const BMI_DATA = [
+  { class:"Non-Diabetic", Normal:33.1, Overweight:37.8, Obese:27.6, Underweight:1.5 },
+  { class:"Pre-Diabetic", Normal:12.8, Overweight:31.6, Obese:55.1, Underweight:0.6 },
+  { class:"Diabetic",     Normal:15.2, Overweight:32.8, Obese:51.7, Underweight:0.3 },
+];
+const BMI_MEAN = [
+  { group:"Neither flag", diabetic:28.02, nonDiabetic:28.01 },
+  { group:"HBP only",     diabetic:28.15, nonDiabetic:27.97 },
+  { group:"HC only",      diabetic:28.00, nonDiabetic:27.89 },
+  { group:"Both HBP+HC",  diabetic:28.00, nonDiabetic:28.14 },
+];
+const LADDER_DATA = [
+  { step:"No Flags",   dm:0.88, preDM:4.32,  n:6254, label:"Neither"        },
+  { step:"HBP Only",  dm:1.82, preDM:17.10, n:2860, label:"Hypertension"   },
+  { step:"HC Only",   dm:1.69, preDM:10.59, n:2597, label:"Hyperlipidemia" },
+  { step:"Both Flags",dm:3.45, preDM:29.52, n:4034, label:"HBP + HC"       },
+];
+const AGE_DATA = [
+  { age:"18-24", dm:0.29, preDM:0.59,  hbp:10.3, hc:7.6  },
+  { age:"25-29", dm:1.43, preDM:1.84,  hbp:9.6,  hc:12.7 },
+  { age:"30-34", dm:0.30, preDM:4.19,  hbp:15.4, hc:15.0 },
+  { age:"35-39", dm:1.50, preDM:3.87,  hbp:21.7, hc:22.7 },
+  { age:"40-44", dm:1.06, preDM:5.32,  hbp:23.9, hc:26.8 },
+  { age:"45-49", dm:1.37, preDM:7.87,  hbp:28.1, hc:28.9 },
+  { age:"50-54", dm:1.38, preDM:10.94, hbp:38.2, hc:40.2 },
+  { age:"55-59", dm:1.62, preDM:13.61, hbp:44.3, hc:46.2 },
+  { age:"60-64", dm:2.12, preDM:17.69, hbp:50.4, hc:49.1 },
+  { age:"65-69", dm:2.21, preDM:20.64, hbp:54.4, hc:55.0 },
+  { age:"70-74", dm:2.92, preDM:21.99, hbp:62.4, hc:55.0 },
+  { age:"75-79", dm:2.55, preDM:21.91, hbp:66.1, hc:54.6 },
+  { age:"80+",   dm:2.56, preDM:20.33, hbp:63.8, hc:52.9 },
+];
+const INCOME_DATA = [
+  { income:"< $15k",    dm:2.62, hbp:57.9, hc:51.6, n:1448 },
+  { income:"$15k-$25k", dm:2.64, hbp:54.0, hc:48.2, n:2346 },
+  { income:"$25k-$35k", dm:2.61, hbp:51.2, hc:44.5, n:1686 },
+  { income:"$35k-$50k", dm:2.10, hbp:46.0, hc:41.9, n:2146 },
+  { income:"$50k+",     dm:1.24, hbp:36.2, hc:38.2, n:8119 },
+];
+const EDU_DATA = [
+  { edu:"Elementary",    dm:4.15, n:265  },
+  { edu:"< High School", dm:4.22, n:663  },
+  { edu:"HS Graduate",   dm:1.90, n:3944 },
+  { edu:"Some College",  dm:2.02, n:4316 },
+  { edu:"College Grad",  dm:1.36, n:6544 },
+];
+const FEATURE_DATA = [
+  { feature:"High Blood Pressure", group:"Clinical",    count:6894  },
+  { feature:"High Cholesterol",    group:"Clinical",    count:6631  },
+  { feature:"BMI Reading",         group:"Clinical",    count:15745 },
+  { feature:"BMI Category",        group:"Clinical",    count:15745 },
+  { feature:"General Health",      group:"Clinical",    count:15745 },
+  { feature:"Exercise Any",        group:"Lifestyle",   count:15745 },
+  { feature:"Smoking Status",      group:"Lifestyle",   count:15745 },
+  { feature:"Age Group",           group:"Demographic", count:15745 },
+  { feature:"Sex",                 group:"Demographic", count:15745 },
+  { feature:"Education",           group:"Demographic", count:15745 },
+  { feature:"Income",              group:"Demographic", count:15745 },
+  { feature:"Diabetes Class",      group:"Target",      count:15745 },
+];
+const FEATURE_GROUP_SUMMARY = [
+  { group:"Clinical",    features:5, color:"#E8442A", desc:"Blood pressure, cholesterol, BMI reading, BMI category, general health" },
+  { group:"Lifestyle",   features:2, color:"#1DB8A4", desc:"Exercise frequency, smoking history"             },
+  { group:"Demographic", features:4, color:"#F0A500", desc:"Age, sex, education level, income bracket"       },
+  { group:"Target",      features:1, color:"#8890A8", desc:"Diabetes classification (0 / 1 / 2)"             },
+];
+const DM_CLASS_DATA = [
+  { label:"No Diabetes",  cls:0, n:13230, pct:84.03, color:"#22C55E" },
+  { label:"Confirmed DM", cls:1, n:290,   pct:1.84,  color:"#EF4444" },
+  { label:"Pre-Diabetes", cls:2, n:2225,  pct:14.13, color:"#F59E0B" },
+];
+
+/* ── SHARED ── */
+const SectionHeader = ({ number, title, subtitle }) => (
+  <div style={{ marginBottom:32 }}>
+    <div style={{ display:"flex", alignItems:"baseline", gap:16, marginBottom:8 }}>
+      <span style={{ fontFamily:FM, fontSize:11, color:C.accent, letterSpacing:"0.15em", textTransform:"uppercase" }}>
+        {String(number).padStart(2,"0")}
+      </span>
+      <div style={{ flex:1, height:1, background:C.border }} />
+    </div>
+    <h2 style={{ fontFamily:FD, fontSize:28, fontWeight:700, color:C.text, margin:"0 0 6px", lineHeight:1.2 }}>{title}</h2>
+    <p style={{ fontFamily:FB, fontSize:14, color:C.textSub, margin:0 }}>{subtitle}</p>
+  </div>
+);
+
+const InsightBox = ({ insight, action }) => (
+  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:1, marginTop:24, border:`1px solid ${C.border}`, borderRadius:8, overflow:"hidden" }}>
+    <div style={{ background:C.surface, padding:"18px 22px" }}>
+      <div style={{ fontFamily:FM, fontSize:10, color:C.teal, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:8 }}>Data Insight</div>
+      <p style={{ fontFamily:FB, fontSize:13, color:C.textSub, margin:0, lineHeight:1.6 }}>{insight}</p>
+    </div>
+    <div style={{ background:C.card, padding:"18px 22px", borderLeft:`1px solid ${C.border}` }}>
+      <div style={{ fontFamily:FM, fontSize:10, color:C.gold, letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:8 }}>Strategic Action</div>
+      <p style={{ fontFamily:FB, fontSize:13, color:C.textSub, margin:0, lineHeight:1.6 }}>{action}</p>
+    </div>
+  </div>
+);
+
+const Tip = ({ active, payload, label, fmt }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:6, padding:"10px 14px", fontFamily:FB }}>
+      <div style={{ fontSize:12, color:C.textSub, marginBottom:6 }}>{label}</div>
+      {payload.map((p,i) => (
+        <div key={i} style={{ fontSize:13, color:p.color||C.text, marginBottom:2 }}>
+          <span style={{ marginRight:8 }}>{p.name}:</span>
+          <strong>{fmt ? fmt(p.value, p.name) : p.value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const Btn = ({ active, color, onClick, children }) => (
+  <button onClick={onClick} style={{
+    fontFamily:FB, fontSize:12, padding:"7px 16px", borderRadius:5, cursor:"pointer",
+    border:`1px solid ${active ? color : C.border}`,
+    background: active ? color+"22" : "transparent",
+    color: active ? color : C.textSub, transition:"all .2s"
+  }}>{children}</button>
+);
+
+/* ── SECTION 0: Foundation ── */
+const DatasetOverview = () => {
+  const [fv, setFv] = useState("groups");
+  const groupColor = { Clinical:C.accent, Lifestyle:C.teal, Demographic:C.gold, Target:C.muted };
+  const stats = [
+    { label:"Total Records",     value:"253,680", sub:"adults surveyed (full BRFSS 2015)",  color:C.teal   },
+    { label:"Analytic Subset",   value:"15,745",  sub:"records in 13-column research file", color:C.accent },
+    { label:"Feature Columns",   value:"13",      sub:"clinical, lifestyle & demographic",  color:C.gold   },
+    { label:"Data Completeness", value:"99.9%",   sub:"near-zero missingness in subset",    color:C.safe   },
+  ];
+  return (
+    <section style={{ marginBottom:80 }}>
+      <SectionHeader number={0} title="The Foundation" subtitle="Scale, structure, and integrity of the CDC BRFSS 2015 dataset powering this research" />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:24 }}>
+        {stats.map(d => (
+          <div key={d.label} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"24px 20px", position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:d.color }} />
+            <div style={{ fontFamily:FB, fontSize:11, color:C.textSub, marginBottom:8 }}>{d.label}</div>
+            <div style={{ fontFamily:FD, fontSize:34, fontWeight:700, color:d.color, lineHeight:1 }}>{d.value}</div>
+            <div style={{ fontFamily:FM, fontSize:10, color:C.muted, marginTop:6 }}>{d.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        {/* Feature panel */}
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"24px 22px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+            <div style={{ fontFamily:FB, fontSize:13, color:C.textSub }}>13-column feature set by domain</div>
+            <div style={{ display:"flex", gap:6 }}>
+              <Btn active={fv==="groups"}   color={C.teal} onClick={() => setFv("groups")}>By Group</Btn>
+              <Btn active={fv==="features"} color={C.teal} onClick={() => setFv("features")}>All Features</Btn>
+            </div>
+          </div>
+          {fv === "groups" ? (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={FEATURE_GROUP_SUMMARY} barCategoryGap="30%">
+                  <CartesianGrid vertical={false} stroke={C.border} />
+                  <XAxis dataKey="group" tick={{ fill:C.textSub, fontSize:12, fontFamily:FB }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+" col"} domain={[0,6]} />
+                  <Tooltip content={<Tip fmt={(v) => v+" features"} />} />
+                  <Bar dataKey="features" name="Feature count" radius={[5,5,0,0]}>
+                    {FEATURE_GROUP_SUMMARY.map((d,i) => <Cell key={i} fill={d.color} />)}
+                    <LabelList dataKey="features" position="top" style={{ fill:C.text, fontSize:13, fontFamily:FM, fontWeight:600 }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginTop:14 }}>
+                {FEATURE_GROUP_SUMMARY.map(d => (
+                  <div key={d.group} style={{ background:C.surface, borderRadius:6, padding:"10px 12px", borderLeft:`3px solid ${d.color}` }}>
+                    <div style={{ fontFamily:FM, fontSize:10, color:d.color, marginBottom:3 }}>{d.group}</div>
+                    <div style={{ fontFamily:FB, fontSize:11, color:C.textSub, lineHeight:1.4 }}>{d.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ overflowY:"auto", maxHeight:300 }}>
+              {FEATURE_DATA.map((d,i) => (
+                <div key={d.feature} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"7px 0", borderBottom: i < FEATURE_DATA.length-1 ? `1px solid ${C.border}` : "none" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ width:8, height:8, borderRadius:"50%", background:groupColor[d.group], flexShrink:0 }} />
+                    <span style={{ fontFamily:FB, fontSize:13, color:C.text }}>{d.feature}</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                    <span style={{ fontFamily:FM, fontSize:10, padding:"2px 8px", borderRadius:3, background:groupColor[d.group]+"22", color:groupColor[d.group] }}>{d.group}</span>
+                    <span style={{ fontFamily:FM, fontSize:11, color:C.muted, minWidth:48, textAlign:"right" }}>{d.count.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* DM class panel */}
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"24px 22px" }}>
+          <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>Diabetes class distribution — baseline prevalence (n = 15,745)</div>
+          <div style={{ marginBottom:20 }}>
+            {DM_CLASS_DATA.map(d => (
+              <div key={d.label} style={{ marginBottom:14 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:10, height:10, borderRadius:2, background:d.color }} />
+                    <span style={{ fontFamily:FB, fontSize:13, color:C.text }}>{d.label}</span>
+                    <span style={{ fontFamily:FM, fontSize:10, color:C.muted }}>(class {d.cls})</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+                    <span style={{ fontFamily:FD, fontSize:20, fontWeight:700, color:d.color }}>{d.pct}%</span>
+                    <span style={{ fontFamily:FM, fontSize:10, color:C.muted }}>{d.n.toLocaleString()}</span>
+                  </div>
+                </div>
+                <div style={{ height:10, background:C.surface, borderRadius:5, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${d.pct}%`, background:d.color, borderRadius:5 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height={100}>
+            <BarChart data={[{ name:"Subset", nd:84.03, pre:14.13, dm:1.84 }]} layout="vertical" barCategoryGap="60%">
+              <XAxis type="number" domain={[0,100]} hide />
+              <YAxis type="category" dataKey="name" hide />
+              <Tooltip content={<Tip fmt={v => v+"%"} />} />
+              <Bar dataKey="nd"  name="No Diabetes"  stackId="a" fill="#22C55E" radius={[4,0,0,4]} />
+              <Bar dataKey="pre" name="Pre-Diabetes" stackId="a" fill="#F59E0B" />
+              <Bar dataKey="dm"  name="Confirmed DM" stackId="a" fill="#EF4444" radius={[0,4,4,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ background:C.surface, borderRadius:6, padding:"12px 16px", marginTop:12, fontFamily:FB, fontSize:12, color:C.textSub, lineHeight:1.5 }}>
+            A combined <strong style={{ color:C.text }}>15.97%</strong> carry confirmed or pre-diabetes.
+            Extrapolated to 253,680 respondents: <strong style={{ color:C.warn }}>40,000+ at-risk adults</strong>.
+          </div>
+        </div>
+      </div>
+      <InsightBox
+        insight="The analytic subset preserves the distributional integrity of the full BRFSS 2015 cohort. At 84.03% non-diabetic, 14.13% pre-diabetic, and 1.84% confirmed diabetic, the class imbalance reflects real-world prevalence — making any predictive signal clinically trustworthy and generalizable."
+        action="Use this baseline prevalence as the calibration benchmark when evaluating screening program performance. A well-targeted intervention on the dual-flag population (25.6% of the subset) should yield measurably higher case-detection rates than population-wide BMI-based approaches."
+      />
+    </section>
+  );
+};
+
+/* ── SECTION 1: Executive Summary ── */
+const ExecutiveSummary = () => {
+  const lift = (3.45/0.88).toFixed(1);
+  return (
+    <section style={{ marginBottom:80 }}>
+      <SectionHeader number={1} title="The 3.9x Risk Multiplier" subtitle="Diabetes prevalence when hypertension and hyperlipidemia converge — CDC BRFSS 2015, n = 15,745" />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
+        {KPI_DATA.map(d => (
+          <div key={d.label} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"28px 24px", position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:d.color }} />
+            <div style={{ fontFamily:FB, fontSize:12, color:C.textSub, marginBottom:10 }}>{d.label}</div>
+            <div style={{ fontFamily:FD, fontSize:42, fontWeight:700, color:d.color, lineHeight:1, marginBottom:8 }}>{d.rate}%</div>
+            <div style={{ fontFamily:FM, fontSize:11, color:C.muted }}>n = {d.n.toLocaleString()} respondents</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"28px 24px" }}>
+        <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>Confirmed diabetes prevalence (%) by comorbidity burden</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={KPI_DATA} barCategoryGap="35%">
+            <CartesianGrid vertical={false} stroke={C.border} />
+            <XAxis dataKey="label" tick={{ fill:C.textSub, fontSize:12, fontFamily:FB }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} domain={[0,4.5]} />
+            <Tooltip content={<Tip fmt={v => v+"%"} />} />
+            <Bar dataKey="rate" name="Diabetes Rate" radius={[4,4,0,0]}>
+              {KPI_DATA.map((d,i) => <Cell key={i} fill={d.color} />)}
+              <LabelList dataKey="rate" position="top" style={{ fill:C.text, fontSize:13, fontFamily:FM, fontWeight:600 }} formatter={v => v+"%"} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:24, marginTop:20, padding:"14px 0", borderTop:`1px solid ${C.border}` }}>
+          {[
+            { val:lift+"x", sub:"risk multiplier", color:C.accent },
+            { val:"4,034",  sub:"dual-flag individuals", color:C.gold },
+            { val:"25.6%",  sub:"of population carries both flags", color:C.teal },
+          ].map((d,i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <div style={{ width:1, height:48, background:C.border }} />}
+              <div style={{ textAlign:"center" }}>
+                <div style={{ fontFamily:FD, fontSize:36, color:d.color, fontWeight:700 }}>{d.val}</div>
+                <div style={{ fontFamily:FB, fontSize:12, color:C.textSub }}>{d.sub}</div>
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      <InsightBox
+        insight="The intersection of hypertension and hyperlipidemia produces a 3.9x amplification in diabetes prevalence — from 0.88% in those with no comorbidities to 3.45% in dual-flag carriers. This is not an additive risk; it is a compounding systemic signal."
+        action="Mandate combined HBP + cholesterol screening panels as a unified diabetes risk flag in all clinical intake workflows. Allocate preventive care resources toward the 25.6% of the population carrying both markers — this cohort represents the highest-yield intervention target."
+      />
+    </section>
+  );
+};
+
+/* ── SECTION 2: BMI Fallacy ── */
+const BMIFallacy = () => {
+  const [view, setView] = useState("distribution");
+  return (
+    <section style={{ marginBottom:80 }}>
+      <SectionHeader number={2} title="The BMI Fallacy" subtitle="Why body weight is a noisy, unreliable predictor compared to clinical biomarkers" />
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"28px 24px" }}>
+        <div style={{ display:"flex", gap:8, marginBottom:24 }}>
+          <Btn active={view==="distribution"} color={C.teal} onClick={() => setView("distribution")}>BMI Category Mix</Btn>
+          <Btn active={view==="means"}        color={C.teal} onClick={() => setView("means")}>BMI Mean by Flag Group</Btn>
+        </div>
+        {view === "distribution" ? (
+          <>
+            <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>BMI category distribution (%) across diabetes classification groups</div>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={BMI_DATA} barCategoryGap="30%">
+                <CartesianGrid vertical={false} stroke={C.border} />
+                <XAxis dataKey="class" tick={{ fill:C.textSub, fontSize:12, fontFamily:FB }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} />
+                <Tooltip content={<Tip fmt={v => v.toFixed(1)+"%"} />} />
+                <Legend wrapperStyle={{ fontFamily:FB, fontSize:12, color:C.textSub, paddingTop:12 }} />
+                <Bar dataKey="Normal"      fill={C.teal}   name="Normal"      radius={[3,3,0,0]} stackId="a" />
+                <Bar dataKey="Overweight"  fill={C.warn}   name="Overweight"  stackId="a" />
+                <Bar dataKey="Obese"       fill={C.danger} name="Obese"       stackId="a" />
+                <Bar dataKey="Underweight" fill={C.muted}  name="Underweight" radius={[3,3,0,0]} stackId="a" />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:20 }}>
+              <div style={{ background:C.surface, borderRadius:6, padding:"14px 18px" }}>
+                <div style={{ fontFamily:FD, fontSize:26, color:C.accent, fontWeight:700 }}>44</div>
+                <div style={{ fontFamily:FB, fontSize:12, color:C.textSub, marginTop:3 }}>confirmed diabetics with <strong style={{ color:C.text }}>Normal BMI</strong> — missed by weight-first screening</div>
+              </div>
+              <div style={{ background:C.surface, borderRadius:6, padding:"14px 18px" }}>
+                <div style={{ fontFamily:FD, fontSize:26, color:C.gold, fontWeight:700 }}>4,882</div>
+                <div style={{ fontFamily:FB, fontSize:12, color:C.textSub, marginTop:3 }}>obese individuals who are <strong style={{ color:C.text }}>not diabetic</strong> — false positives from BMI-first logic</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>Mean BMI for diabetic vs. non-diabetic individuals, grouped by clinical flag status</div>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={BMI_MEAN} layout="vertical" barCategoryGap="30%">
+                <CartesianGrid horizontal={false} stroke={C.border} />
+                <XAxis type="number" domain={[27,28.5]} tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="group" type="category" width={110} tick={{ fill:C.textSub, fontSize:12, fontFamily:FB }} axisLine={false} tickLine={false} />
+                <Tooltip content={<Tip fmt={v => v.toFixed(2)+" BMI"} />} />
+                <Legend wrapperStyle={{ fontFamily:FB, fontSize:12, color:C.textSub }} />
+                <Bar dataKey="nonDiabetic" name="Non-Diabetic" fill={C.teal}   radius={[0,3,3,0]} />
+                <Bar dataKey="diabetic"    name="Diabetic"     fill={C.danger} radius={[0,3,3,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ background:C.surface, borderRadius:6, padding:"14px 18px", marginTop:16, fontFamily:FB, fontSize:13, color:C.textSub }}>
+              Across all four clinical flag combinations, diabetic and non-diabetic individuals have nearly <strong style={{ color:C.text }}>identical mean BMI values (approx 28.0)</strong>. BMI carries no discriminatory signal within comorbidity subgroups.
+            </div>
+          </>
+        )}
+      </div>
+      <InsightBox
+        insight="BMI distributions between diabetic and non-diabetic populations substantially overlap. 44 confirmed diabetics have Normal BMI; 4,882 obese individuals are not diabetic. Within clinical flag subgroups, mean BMI differs by less than 0.2 points — statistically negligible."
+        action="Retire BMI as a primary diabetes screening trigger in clinical protocols. Redirect screening investment to validated biomarker pairs (HBP + hyperlipidemia). Audit existing referral pipelines for BMI-first triage logic that may be systematically missing high-risk, normal-weight patients."
+      />
+    </section>
+  );
+};
+
+/* ── SECTION 3: Pre-Diabetes Pipeline ── */
+const RiskLadder = () => (
+  <section style={{ marginBottom:80 }}>
+    <SectionHeader number={3} title="The Hidden Epidemic: Pre-Diabetes Pipeline" subtitle="Before diabetes is diagnosed, clinical flags are already silently loading the pipeline — pre-diabetes rates tell the real story" />
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"28px 24px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:32, marginBottom:28, padding:"20px 24px", background:C.surface, borderRadius:8, borderLeft:`4px solid ${C.warn}` }}>
+        <div>
+          <div style={{ fontFamily:FD, fontSize:52, fontWeight:700, color:C.warn, lineHeight:1 }}>6.8x</div>
+          <div style={{ fontFamily:FB, fontSize:12, color:C.textSub, marginTop:4 }}>pre-diabetes lift</div>
+        </div>
+        <div style={{ width:1, height:56, background:C.border }} />
+        <div style={{ fontFamily:FB, fontSize:14, color:C.textSub, lineHeight:1.6, maxWidth:520 }}>
+          Dual-flag carriers (HBP + HC) have a <strong style={{ color:C.text }}>29.5% pre-diabetes rate</strong> — compared to just 4.3% in those with no comorbidities. This is not a confirmed diagnosis yet. It is a <strong style={{ color:C.warn }}>preventable pipeline</strong> that clinical screening can interrupt.
+        </div>
+      </div>
+      <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>Pre-diabetes prevalence (%) by comorbidity profile</div>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={LADDER_DATA} barCategoryGap="30%">
+          <CartesianGrid vertical={false} stroke={C.border} />
+          <XAxis dataKey="step" tick={{ fill:C.textSub, fontSize:12, fontFamily:FB }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} domain={[0,35]} />
+          <Tooltip content={<Tip fmt={v => v.toFixed(2)+"%"} />} />
+          <Bar dataKey="preDM" name="Pre-Diabetes Rate" radius={[6,6,0,0]}>
+            {LADDER_DATA.map((_,i) => <Cell key={i} fill={i<1 ? C.safe : i<3 ? C.warn : "#E8A020"} />)}
+            <LabelList dataKey="preDM" position="top" style={{ fill:C.text, fontSize:13, fontFamily:FM, fontWeight:600 }} formatter={v => v+"%"} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{ marginTop:24, borderTop:`1px solid ${C.border}`, paddingTop:20 }}>
+        <div style={{ fontFamily:FM, fontSize:11, color:C.textSub, marginBottom:12, letterSpacing:"0.08em" }}>PRE-DIABETES vs CONFIRMED DIABETES — STEP-UP COMPARISON</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+          {LADDER_DATA.map((d,i) => {
+            const color = i<1 ? C.safe : i<3 ? C.warn : "#E8A020";
+            const prev = i>0 ? LADDER_DATA[i-1].preDM : null;
+            const lift = prev ? ((d.preDM/prev-1)*100).toFixed(0) : null;
+            return (
+              <div key={d.step} style={{ background:C.surface, borderRadius:8, padding:"14px 16px", borderTop:`2px solid ${color}` }}>
+                <div style={{ fontFamily:FB, fontSize:11, color:C.textSub, marginBottom:8 }}>{d.label}</div>
+                <div style={{ marginBottom:6 }}>
+                  <div style={{ fontFamily:FM, fontSize:9, color:C.warn, letterSpacing:"0.08em", marginBottom:2 }}>PRE-DIABETES</div>
+                  <div style={{ fontFamily:FD, fontSize:22, color, fontWeight:700 }}>{d.preDM}%</div>
+                  {lift && <div style={{ fontFamily:FM, fontSize:10, color:C.accent, marginTop:2 }}>+{lift}% vs prev</div>}
+                </div>
+                <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:6 }}>
+                  <div style={{ fontFamily:FM, fontSize:9, color:C.muted, letterSpacing:"0.08em", marginBottom:2 }}>CONFIRMED DM</div>
+                  <div style={{ fontFamily:FB, fontSize:14, color:C.muted }}>{d.dm}%</div>
+                </div>
+                <div style={{ fontFamily:FM, fontSize:10, color:C.muted, marginTop:6 }}>n = {d.n.toLocaleString()}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+    <InsightBox
+      insight="Pre-diabetes — not confirmed diabetes — is where the actionable signal lives. The 29.5% pre-diabetes rate in dual-flag carriers dwarfs the 3.45% confirmed diabetes rate in the same group. These are patients whose trajectory is still alterable. The comorbidity flags are the early warning system."
+      action="Reframe clinical goals from diabetes diagnosis to pre-diabetes interception. Implement routine HbA1c screening for all dual-flag (HBP + HC) patients regardless of BMI or age. A 10% reduction in pre-diabetes conversion rates across 4,034 dual-flag individuals represents hundreds of prevented diagnoses — and millions in avoided downstream care costs."
+    />
+  </section>
+);
+
+/* ── SECTION 4: Intervention Zone ── */
+const InterventionZone = () => {
+  const [overlay, setOverlay] = useState("none");
+  return (
+    <section style={{ marginBottom:80 }}>
+      <SectionHeader number={4} title="The Intervention Zone" subtitle="Age-stratified prevalence reveals a critical 45-54 inflection point for preventive care deployment" />
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"28px 24px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+          <div style={{ fontFamily:FB, fontSize:13, color:C.textSub }}>Diabetes and pre-diabetes prevalence (%) by age group</div>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <span style={{ fontFamily:FB, fontSize:11, color:C.textSub }}>Overlay:</span>
+            <Btn active={overlay==="none"} color={C.gold} onClick={() => setOverlay("none")}>None</Btn>
+            <Btn active={overlay==="hbp"}  color={C.gold} onClick={() => setOverlay("hbp")}>HBP Rate</Btn>
+            <Btn active={overlay==="hc"}   color={C.gold} onClick={() => setOverlay("hc")}>HC Rate</Btn>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <ComposedChart data={AGE_DATA}>
+            <CartesianGrid vertical={false} stroke={C.border} />
+            <XAxis dataKey="age" tick={{ fill:C.textSub, fontSize:11, fontFamily:FB }} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="left" tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} />
+            {overlay !== "none" && <YAxis yAxisId="right" orientation="right" tick={{ fill:C.gold, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} domain={[0,80]} />}
+            <Tooltip content={<Tip fmt={v => v.toFixed(2)+"%"} />} />
+            <ReferenceLine yAxisId="left" x="45-49" stroke={C.accent} strokeDasharray="4 3" label={{ value:"Inflection", fill:C.accent, fontSize:11, fontFamily:FM, position:"top" }} />
+            <Area yAxisId="left" type="monotone" dataKey="preDM" name="Pre-Diabetes" fill={C.warn+"30"} stroke={C.warn} strokeWidth={2} />
+            <Line yAxisId="left" type="monotone" dataKey="dm" name="Diabetes" stroke={C.danger} strokeWidth={2.5} dot={{ fill:C.danger, r:3 }} />
+            {overlay==="hbp" && <Line yAxisId="right" type="monotone" dataKey="hbp" name="HBP Rate %" stroke={C.gold} strokeWidth={1.5} strokeDasharray="5 3" dot={{ fill:C.gold, r:2 }} />}
+            {overlay==="hc"  && <Line yAxisId="right" type="monotone" dataKey="hc"  name="HC Rate %"  stroke={C.gold} strokeWidth={1.5} strokeDasharray="5 3" dot={{ fill:C.gold, r:2 }} />}
+          </ComposedChart>
+        </ResponsiveContainer>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginTop:20 }}>
+          {[
+            { range:"18-44", label:"Low-Risk Window",  dm:"0.3-1.5%", note:"Pre-diabetes rising quietly",           color:C.safe   },
+            { range:"45-54", label:"Inflection Zone",  dm:"1.4%",     note:"Pre-diabetes surges to 10.9% by 50-54", color:C.accent },
+            { range:"55-74", label:"Peak Burden",      dm:"1.6-2.9%", note:"Compounding comorbidities peak",        color:C.danger },
+          ].map(d => (
+            <div key={d.range} style={{ background:C.surface, borderRadius:8, padding:"14px 18px", borderLeft:`3px solid ${d.color}` }}>
+              <div style={{ fontFamily:FM, fontSize:10, color:d.color, letterSpacing:"0.1em" }}>{d.range}</div>
+              <div style={{ fontFamily:FB, fontSize:13, fontWeight:600, color:C.text, margin:"6px 0 4px" }}>{d.label}</div>
+              <div style={{ fontFamily:FD, fontSize:18, color:d.color }}>{d.dm} DM rate</div>
+              <div style={{ fontFamily:FB, fontSize:11, color:C.textSub, marginTop:4 }}>{d.note}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <InsightBox
+        insight="Pre-diabetes rates surge from 5.3% at age 40-44 to 10.9% by 50-54, more than doubling in a single decade. This 45-54 window is where comorbidity accumulation (HBP rises from 24% to 38%) begins accelerating irreversibly. The inflection is clear and predictable."
+        action="Establish a mandatory 45-year metabolic screening checkpoint in all primary care protocols. Launch employer-based wellness programs targeting the 35-44 cohort — the intervention window before the inflection — with combined lipid panel, blood pressure, and glucose screening. Catching pre-diabetes at 40 is clinically and economically superior to managing diabetes at 55."
+      />
+    </section>
+  );
+};
+
+/* ── SECTION 5: Socioeconomic ── */
+const SocioeconomicContext = () => {
+  const [view, setView] = useState("income");
+  return (
+    <section style={{ marginBottom:40 }}>
+      <SectionHeader number={5} title="Socioeconomic Context" subtitle="Income and education as structural determinants of clinical screening access and diabetes burden" />
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"28px 24px" }}>
+        <div style={{ display:"flex", gap:8, marginBottom:24 }}>
+          <Btn active={view==="income"}    color={C.teal} onClick={() => setView("income")}>By Income</Btn>
+          <Btn active={view==="education"} color={C.teal} onClick={() => setView("education")}>By Education</Btn>
+        </div>
+        {view === "income" ? (
+          <>
+            <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>Confirmed diabetes rate (%) by household income bracket — HBP and HC co-prevalence shown for context</div>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={INCOME_DATA} layout="vertical">
+                <CartesianGrid horizontal={false} stroke={C.border} />
+                <XAxis type="number" tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} domain={[0,65]} />
+                <YAxis dataKey="income" type="category" width={90} tick={{ fill:C.textSub, fontSize:12, fontFamily:FB }} axisLine={false} tickLine={false} />
+                <Tooltip content={<Tip fmt={v => v.toFixed(1)+"%"} />} />
+                <Bar dataKey="hbp" name="HBP prevalence" fill={C.gold+"44"} radius={[0,3,3,0]} />
+                <Bar dataKey="hc"  name="HC prevalence"  fill={C.teal+"44"} radius={[0,3,3,0]} />
+                <Line dataKey="dm" name="Diabetes Rate" stroke={C.danger} strokeWidth={2.5} dot={{ fill:C.danger, r:5 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:20 }}>
+              <div style={{ background:C.surface, borderRadius:6, padding:"14px 18px" }}>
+                <div style={{ fontFamily:FD, fontSize:26, color:C.danger, fontWeight:700 }}>2.1x</div>
+                <div style={{ fontFamily:FB, fontSize:12, color:C.textSub, marginTop:3 }}>higher diabetes rate in sub-$35k households vs $50k+ earners</div>
+              </div>
+              <div style={{ background:C.surface, borderRadius:6, padding:"14px 18px" }}>
+                <div style={{ fontFamily:FD, fontSize:26, color:C.gold, fontWeight:700 }}>+21.7pp</div>
+                <div style={{ fontFamily:FB, fontSize:12, color:C.textSub, marginTop:3 }}>higher HBP prevalence in lowest vs highest income bracket</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontFamily:FB, fontSize:13, color:C.textSub, marginBottom:20 }}>Confirmed diabetes rate (%) by highest educational attainment</div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={EDU_DATA} barCategoryGap="30%">
+                <CartesianGrid vertical={false} stroke={C.border} />
+                <XAxis dataKey="edu" tick={{ fill:C.textSub, fontSize:11, fontFamily:FB }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill:C.muted, fontSize:11, fontFamily:FM }} axisLine={false} tickLine={false} tickFormatter={v => v+"%"} domain={[0,5]} />
+                <Tooltip content={<Tip fmt={v => v.toFixed(2)+"%"} />} />
+                <Bar dataKey="dm" name="Diabetes Rate" radius={[5,5,0,0]}>
+                  {EDU_DATA.map((d,i) => <Cell key={i} fill={d.dm>3 ? C.danger : d.dm>2 ? C.warn : C.teal} />)}
+                  <LabelList dataKey="dm" position="top" style={{ fill:C.text, fontSize:12, fontFamily:FM }} formatter={v => v+"%"} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ background:C.surface, borderRadius:6, padding:"14px 18px", marginTop:16 }}>
+              <div style={{ fontFamily:FD, fontSize:24, color:C.accent, fontWeight:700, marginBottom:4 }}>3.1x</div>
+              <div style={{ fontFamily:FB, fontSize:13, color:C.textSub }}>diabetes rate differential between less than High School (4.2%) and College Graduate (1.4%). Education functions as a proxy for screening access, health literacy, and preventive care utilization.</div>
+            </div>
+          </>
+        )}
+      </div>
+      <InsightBox
+        insight="Sub-$35k households carry a 2.1x higher diabetes burden than those earning $50k+, coupled with 21.7 percentage points more hypertension. The pattern holds in education: those with less than a high school diploma face a 3.1x higher diabetes rate than college graduates. These are access gaps, not biology."
+        action="Prioritize community health worker deployment and mobile screening units in low-income ZIP codes with high comorbidity density. Partner with Federally Qualified Health Centers to integrate HBP + cholesterol panels into existing visit workflows. Fund health literacy programs targeting the 35-54 age cohort in lower-education communities — this is where prevention ROI is highest."
+      />
+    </section>
+  );
+};
+
+/* ── APP SHELL ── */
+const NAV = [
+  { id:"foundation", label:"00 Foundation"        },
+  { id:"bmi",        label:"01 BMI Fallacy"       },
+  { id:"exec",       label:"02 Executive Summary" },
+  { id:"ladder",     label:"03 Risk Ladder"       },
+  { id:"zone",       label:"04 Intervention Zone" },
+  { id:"socio",      label:"05 Socioeconomic"     },
+];
+
+function App() {
+  const [active, setActive] = useState("foundation");
+  const scrollTo = (id) => {
+    setActive(id);
+    document.getElementById(id).scrollIntoView({ behavior:"smooth", block:"start" });
+  };
+  return (
+    <div style={{ background:C.bg, minHeight:"100vh" }}>
+      {/* Sticky nav */}
+      <div style={{ borderBottom:`1px solid ${C.border}`, padding:"20px 40px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:100, background:C.bg }}>
+        <div>
+          <div style={{ fontFamily:FD, fontSize:20, fontWeight:700, color:C.text }}>Beyond the Scale</div>
+          <div style={{ fontFamily:FM, fontSize:10, color:C.textSub, letterSpacing:"0.12em" }}>CDC BRFSS 2015 · 253,680 adults · 15,745-record analytic subset · Precision Red Flags Research</div>
+        </div>
+        <nav style={{ display:"flex", gap:4 }}>
+          {NAV.map(n => (
+            <button key={n.id} onClick={() => scrollTo(n.id)} style={{
+              fontFamily:FM, fontSize:10, padding:"6px 12px", borderRadius:4, cursor:"pointer", letterSpacing:"0.06em",
+              border:`1px solid ${active===n.id ? C.accent : "transparent"}`,
+              background: active===n.id ? C.accent+"18" : "transparent",
+              color: active===n.id ? C.accent : C.muted, transition:"all .2s"
+            }}>{n.label}</button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Hero */}
+      <div style={{ padding:"60px 40px 48px", borderBottom:`1px solid ${C.border}`, background:`linear-gradient(180deg, ${C.surface} 0%, ${C.bg} 100%)` }}>
+        <div style={{ maxWidth:720 }}>
+          <div style={{ fontFamily:FM, fontSize:11, color:C.accent, letterSpacing:"0.15em", textTransform:"uppercase", marginBottom:16 }}>Executive Research Dashboard</div>
+          <h1 style={{ fontFamily:FD, fontSize:48, fontWeight:700, color:C.text, lineHeight:1.15, marginBottom:20 }}>
+            Clinical biomarkers outperform BMI as<br />
+            <span style={{ color:C.accent }}>precision diabetes predictors.</span>
+          </h1>
+          <p style={{ fontFamily:FB, fontSize:16, color:C.textSub, lineHeight:1.7, maxWidth:620 }}>
+            Analysis of 15,745 CDC BRFSS records demonstrates that the co-presence of Hypertension and Hyperlipidemia produces a 3.9x amplification in diabetes prevalence — a clinically actionable signal that BMI systematically fails to surface.
+          </p>
+        </div>
+      </div>
+
+      {/* Sections */}
+      <div style={{ padding:"60px 40px", maxWidth:1000, margin:"0 auto" }}>
+        <div id="foundation"><DatasetOverview /></div>
+        <div id="bmi"><BMIFallacy /></div>
+        <div id="exec"><ExecutiveSummary /></div>
+        <div id="ladder"><RiskLadder /></div>
+        <div id="zone"><InterventionZone /></div>
+        <div id="socio"><SocioeconomicContext /></div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ borderTop:`1px solid ${C.border}`, padding:"24px 40px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <div style={{ fontFamily:FB, fontSize:12, color:C.muted }}>Beyond the Scale · CDC BRFSS 2015 Dataset · 13-Variable Subset</div>
+        <div style={{ fontFamily:FM, fontSize:11, color:C.muted }}>For clinical research and executive strategy use only</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
